@@ -6,7 +6,7 @@
 
 ## Objectives:
 
-* Implement at least 2 SOLID principles in a project;
+* Implement at least 3 SOLID principles in a project;
 
 ## Used Design Principles: 
 

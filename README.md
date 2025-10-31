@@ -1,10 +1,6 @@
 # Creational Design Patterns
 
-----
-
-## Laboratory Work 1
-
-**Author:** Nicolae Marga
+## Author: Nicolae Marga, FAF-231
 
 ----
 

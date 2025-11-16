@@ -1,444 +1,483 @@
-# Creational Design Patterns
+# Structural Design Patterns
 
 ## Author: Nicolae Marga, FAF-231
 
 ----
 
-## Objectives:
+## Objectives
 
-* Get familiar with the Creational DPs;
-* Choose a specific domain;
-* Implement at least 3 CDPs for the specific domain;
+- Understand structural design patterns
+- Choose a specific domain (Fantasy RPG System)
+- Implement at least 3 structural design patterns for the domain
+- Demonstrate pattern composition and real-world usage
 
+## Used Design Patterns
 
-## Used Design Patterns: 
+- Decorator Pattern
+- Facade Pattern
+- Proxy Pattern
+- Composite Pattern
 
-* **Factory Method Pattern**
-* **Abstract Factory Pattern**
-* **Builder Pattern**
-* **Singleton Pattern**
-
+---
 
 ## Implementation
 
-### Overview
+### Domain Context
 
-This project implements a fantasy RPG character, monster, and equipment management system with a combat adventure feature using five creational design patterns. The domain focuses on creating different character classes (Warrior, Mage, Archer, Rogue), monster types (Goblin, Undead, Beast, Demon), and themed equipment sets (Fire, Ice, Shadow, Holy). The implementation demonstrates how creational patterns solve object instantiation challenges in a game context, extended with a combat system for dynamic gameplay.
+The structural patterns were implemented in a Fantasy RPG combat system. The domain includes characters (Warriors, Mages, Archers), equipment, monsters, and combat mechanics. Structural patterns address cross-cutting concerns: dynamically enhancing character abilities without inheritance, simplifying complex combat logic, and controlling resource access.
 
-### 1. Factory Method Pattern
+### 1. Decorator Pattern
 
-The Factory Method pattern is used to create different character types and monster types through dedicated factory classes. Each factory (WarriorFactory, MageFactory, ArcherFactory, RogueFactory for characters; GoblinFactory, UndeadFactory, BeastFactory, DemonFactory for monsters) implements the respective interface and knows how to instantiate its specific class with appropriate base stats.
+**Purpose:** Dynamically add enhancements (potions, buffs, enchantments) to characters at runtime without creating exponential subclass combinations.
 
-**Character Factory Interface:**
 ```python
-class ICharacterFactory(ABC):
-    @abstractmethod
-    def create_character(self, name: str) -> Character:
-        pass
+class CharacterDecorator:
+    def __init__(self, character):
+        self._character = character
     
-    def create_with_defaults(self) -> Character:
-        return self.create_character(f"Default{self.__class__.__name__.replace('Factory', '')}")
-```
+    def __getattr__(self, name):
+        return getattr(self._character, name)
 
-**Concrete Factory Example (Warrior):**
-```python
-class WarriorFactory(ICharacterFactory):
-    def create_character(self, name: str) -> Character:
-        print(f"[WarriorFactory] Creating a mighty warrior named '{name}'")
-        return Warrior(name)
-```
-
-**Monster Factory Interface:**
-```python
-class IMonsterFactory(ABC):
-    @abstractmethod
-    def create_monster(self, name: str, level: int) -> Monster:
-        pass
-```
-
-**Concrete Factory Example (Goblin):**
-```python
-class GoblinFactory(IMonsterFactory):
-    def create_monster(self, name: str, level: int) -> Monster:
-        print(f"[GoblinFactory] Creating a goblin named '{name}' at level {level}")
-        return Goblin(name, level)
+class StrengthPotionDecorator(CharacterDecorator):
+    def __init__(self, character, strength_bonus: int = 8):
+        super().__init__(character)
+        self._strength_bonus = strength_bonus
+    
+    @property
+    def strength(self):
+        return self._character.strength + self._strength_bonus
+    
+    def basic_attack(self):
+        base_damage = self._character.basic_attack()
+        bonus = self._strength_bonus // 2
+        return base_damage + bonus
 ```
 
 **Usage:**
 ```python
 warrior = CharacterCreator.create_character(CharacterClass.WARRIOR, "Thorin")
-goblin = MonsterCreator.create_monster(MonsterType.GOBLIN, "Grax", 2)
+enhanced = StrengthPotionDecorator(warrior, strength_bonus=8)
+super_enhanced = ShieldEnchantmentDecorator(enhanced, damage_reduction=0.20)
 ```
 
-### 2. Abstract Factory Pattern
+**Benefits:**
+- No subclass explosion
+- Stack multiple enhancements transparently
+- Add/remove behaviors at runtime
 
-The Abstract Factory pattern creates families of related equipment objects (weapon, armor, accessory) that share a common theme. Each factory (FireEquipmentFactory, IceEquipmentFactory, etc.) produces a complete equipment set with matching aesthetics and bonuses.
+---
 
-**Equipment Factory Interface:**
+### 2. Facade Pattern
+
+**Purpose:** Simplify the complex combat system (30+ steps: initialization, turns, damage calculation, rewards, logging) behind a single interface.
+
 ```python
-class IEquipmentFactory(ABC):
-    @abstractmethod
-    def create_weapon(self) -> Weapon:
-        pass
+class CombatFacade:
+    def __init__(self):
+        self.battle_log = []
     
-    @abstractmethod
-    def create_armor(self) -> Armor:
-        pass
+    def quick_battle(self, party: List[Character], monster_count: int) -> dict:
+        from domain.factory.monster_factories import MonsterCreator
+        
+        avg_level = sum(h.level for h in party) // len(party)
+        monsters = MonsterCreator.create_monster_wave(monster_count, avg_level)
+        return self.simulate_battle(party, monsters)
     
-    @abstractmethod
-    def create_accessory(self) -> Accessory:
-        pass
-    
-    def create_full_set(self) -> dict:
-        return {
-            'weapon': self.create_weapon(),
-            'armor': self.create_armor(),
-            'accessory': self.create_accessory()
-        }
-```
-
-**Concrete Factory Example (Fire Theme):**
-```python
-class FireEquipmentFactory(IEquipmentFactory):
-    def create_weapon(self) -> Weapon:
-        return Weapon("Flamebrand Sword", 42, "Longsword")
-    
-    def create_armor(self) -> Armor:
-        return Armor("Inferno Plate", 35, "Heavy Armor")
-    
-    def create_accessory(self) -> Accessory:
-        return Accessory("Phoenix Amulet", "+20% Fire Damage")
+    def simulate_battle(self, party: List, monsters: List) -> dict:
+        while self._is_battle_ongoing(party, monsters):
+            for hero in party:
+                if hero.is_alive():
+                    target = random.choice([m for m in monsters if m.is_alive()])
+                    damage = hero.basic_attack()
+                    target.take_damage(damage)
+                    self._log(f"{hero.name} attacks {target.name} for {damage}!")
+            
+            for monster in [m for m in monsters if m.is_alive()]:
+                target = random.choice([h for h in party if h.is_alive()])
+                damage = monster.basic_attack()
+                target.take_damage(damage)
+                self._log(f"{monster.name} attacks {target.name}!")
+        
+        return self._calculate_battle_results(party, monsters)
 ```
 
 **Usage:**
 ```python
-fire_factory = FireEquipmentFactory()
-equipment_set = fire_factory.create_full_set()
+facade = CombatFacade()
+result = facade.quick_battle(party, 2)
+print(f"Victory: {result['victory']}")
+print(f"XP Earned: {result['experience_earned']}")
 ```
 
-### 3. Builder Pattern
+**Benefits:**
+- Single method replaces 30+ manual steps
+- Hides complex battle mechanics
+- Decouples client from combat subsystem
 
-The Builder pattern provides a flexible way to construct complex character objects step-by-step. It includes a CharacterBuilder class with a fluent interface and a CharacterDirector that encapsulates preset character configurations.
+---
 
-**Builder Implementation:**
+### 3. Proxy Pattern
+
+**Purpose:** Lazy-load expensive character objects on first access and automatically track all attribute accesses for auditing.
+
 ```python
-class CharacterBuilder:
-    def __init__(self):
+class CharacterProxy:
+    def __init__(self, character_loader, name: str):
         self._character = None
-        self._name = "Unknown Hero"
-        self._base_class = "warrior"
-    
-    def set_base_class(self, class_type: str):
-        self._base_class = class_type.lower()
-        return self
-    
-    def set_name(self, name: str):
+        self._character_loader = character_loader
         self._name = name
-        return self
+        self._access_log = []
     
-    def set_level(self, level: int):
-        if not self._character:
-            self._create_base_character()
-        self._character.level = level
-        return self
+    def _ensure_loaded(self):
+        if self._character is None:
+            self._character = self._character_loader(self._name)
+            self._log(f"Character '{self._name}' loaded")
     
-    def build(self) -> Character:
-        if not self._character:
-            self._create_base_character()
-        result = self._character
-        self.reset()
-        return result
-```
-
-**Director for Preset Builds:**
-```python
-class CharacterDirector:
-    def create_tank_warrior(self, name: str) -> Character:
-        return (self._builder
-                .set_base_class("warrior")
-                .set_name(name)
-                .set_level(10)
-                .set_health(250)
-                .set_strength(30)
-                .build())
+    @property
+    def strength(self):
+        self._ensure_loaded()
+        self._log(f"Accessed strength: {self._character.strength}")
+        return self._character.strength
+    
+    def get_access_log(self):
+        return self._access_log
 ```
 
 **Usage:**
 ```python
-# Manual building
-builder = CharacterBuilder()
-hero = (builder
-        .set_base_class("warrior")
-        .set_name("Custom Hero")
-        .set_level(15)
-        .set_health(300)
-        .set_strength(35)
-        .set_intelligence(8)
-        .set_agility(12)
-        .build())
-
-# Using director
-director = CharacterDirector()
-tank = director.create_tank_warrior("Iron Wall")
+proxy = CharacterProxy(
+    lambda name: CharacterCreator.create_character(CharacterClass.ARCHER, name),
+    "Legolas"
+)
+# Character NOT loaded yet
+name = proxy.name  # NOW loads on first access
+print(proxy.get_access_log())
 ```
 
-### 4. Singleton Pattern
+**Benefits:**
+- Lazy-loading defers expensive operations
+- Automatic access logging for auditing
+- Transparent to client code
+- Resource control and optimization
 
-The Singleton pattern ensures only one GameManager instance exists throughout the application, managing global game state, party members, and configuration settings.
+---
 
-**Singleton Implementation:**
+### 4. Composite Pattern
+
+**Purpose:** Build hierarchical squad structures where individual characters and squads can be treated uniformly. Squads contain sub-squads and characters, forming a tree structure that supports operations across entire hierarchies.
+
 ```python
-class GameManager:
-    _instance = None
-    _initialized = False
+class SquadComponent:
+    def get_total_damage(self) -> int:
+        pass
     
-    def __new__(cls):
-        if cls._instance is None:
-            print("[GameManager] Creating new GameManager instance (Singleton)")
-            cls._instance = super(GameManager, cls).__new__(cls)
-        return cls._instance
+    def get_total_health(self) -> int:
+        pass
     
-    def __init__(self):
-        if not GameManager._initialized:
-            self.game_name = "Fantasy Quest"
-            self.version = "1.0.0"
-            self.difficulty = "Normal"
-            self.max_party_size = 4
-            self.current_party = []
-            GameManager._initialized = True
+    def get_members_count(self) -> int:
+        pass
+    
+    def display_info(self, indent: int = 0) -> str:
+        pass
+
+class CharacterComponent(SquadComponent):
+    def __init__(self, character):
+        self.character = character
+    
+    def get_total_damage(self) -> int:
+        return self.character.basic_attack()
+    
+    def get_total_health(self) -> int:
+        return self.character.health
+    
+    def get_members_count(self) -> int:
+        return 1
+    
+    def get_average_level(self) -> float:
+        return float(self.character.level)
+    
+    def display_info(self, indent: int = 0) -> str:
+        spacing = "  " * indent
+        return (f"{spacing}├─ {self.character.name} "
+                f"(Lvl {self.character.level}) | "
+                f"HP: {self.character.health}/{self.character.max_health}")
+
+class Squad(SquadComponent):
+    def __init__(self, name: str):
+        self.name = name
+        self.members = []
+    
+    def add_member(self, component: SquadComponent) -> None:
+        self.members.append(component)
+    
+    def remove_member(self, component: SquadComponent) -> None:
+        if component in self.members:
+            self.members.remove(component)
+    
+    def get_total_damage(self) -> int:
+        return sum(member.get_total_damage() for member in self.members)
+    
+    def get_total_health(self) -> int:
+        return sum(member.get_total_health() for member in self.members)
+    
+    def get_members_count(self) -> int:
+        return sum(member.get_members_count() for member in self.members)
+    
+    def display_info(self, indent: int = 0) -> str:
+        spacing = "  " * indent
+        info = f"{spacing}Squad: {self.name}\n"
+        info += f"{spacing}   Members: {self.get_members_count()} | "
+        info += f"Avg Level: {self.get_average_level():.1f}\n"
+        
+        for member in self.members:
+            info += member.display_info(indent + 1) + "\n"
+        
+        return info.rstrip()
 ```
 
 **Usage:**
 ```python
-game_manager1 = GameManager()  # Creates instance
-game_manager2 = GameManager()  # Returns same instance
-print(game_manager1 is game_manager2)  # True
+warrior1 = CharacterCreator.create_character(CharacterClass.WARRIOR, "Aragorn")
+warrior2 = CharacterCreator.create_character(CharacterClass.WARRIOR, "Gimli")
+archer = CharacterCreator.create_character(CharacterClass.ARCHER, "Legolas")
+mage = CharacterCreator.create_character(CharacterClass.MAGE, "Gandalf")
+
+melee_squad = Squad("Melee Squad")
+melee_squad.add_member(CharacterComponent(warrior1))
+melee_squad.add_member(CharacterComponent(warrior2))
+
+ranged_squad = Squad("Ranged Squad")
+ranged_squad.add_member(CharacterComponent(archer))
+ranged_squad.add_member(CharacterComponent(mage))
+
+main_squad = Squad("The Fellowship")
+main_squad.add_member(melee_squad)
+main_squad.add_member(ranged_squad)
+
+print(main_squad.display_info())
+print(f"Total Members: {main_squad.get_members_count()}")
+print(f"Total Damage: {main_squad.get_total_damage()}")
+print(f"Average Level: {main_squad.get_average_level():.1f}")
 ```
 
-### 5. Combat System
+**Benefits:**
+- Treat individual characters and entire squads uniformly
+- Build complex hierarchies with simple tree operations
+- Easily calculate aggregate statistics across hierarchies
+- Add/remove members at any level dynamically
 
-The Combat System integrates the created characters, monsters, and equipment into dynamic turn-based battles. It manages adventures with increasing difficulty, experience gain, leveling up, and party management.
+---
 
-**Combat System Overview:**
-```python
-class CombatSystem:
-    def __init__(self, party: List[Character]):
-        self.party = party
-        # ... initialization
-    
-    def start_adventure(self, max_rounds: int = 5):
-        # Manages rounds of combat with monster waves
-        # Handles experience distribution and leveling
-```
-
-**Usage:**
-```python
-combat_system = CombatSystem(party)
-combat_system.start_adventure(15)  # 15-round adventure
-```
-
-
-
-## Conclusions
-
-### Key Achievements
-
-1. **Separation of Concerns**: Each class is in its own file, making the codebase modular and maintainable.
-
-2. **Pattern Integration**: Successfully integrated four creational patterns that work together cohesively in a fantasy game context, extended with a combat system.
-
-3. **Extensibility**: Adding new character types, monster types, or equipment themes requires minimal code changes due to the factory patterns.
-
-4. **Flexibility**: The Builder pattern provides fine-grained control over character creation while maintaining clean code.
-
-5. **Global State Management**: The Singleton pattern ensures consistent game state across the application.
-
-6. **Dynamic Gameplay**: The Combat System enables engaging adventures with leveling and progression.
-
-### Running the Project
+## Running the Demo
 
 ```bash
 cd /home/user1/TMPS-1
-PYTHONPATH=/home/user1/TMPS-1:$PYTHONPATH python3 client/main.py
+PYTHONPATH=/home/user1/TMPS-1:$PYTHONPATH python3 client/structural_demo.py
 ```
 
-### Output Example
+## Project Structure
 
 ```
-===========================================
-                    Fantasy Quest
-===========================================
+domain/structural/
+├── decorators/
+│   ├── character_decorator.py
+│   ├── strength_potion_decorator.py
+│   ├── shield_enchantment_decorator.py
+│   └── spell_buff_decorator.py
+├── facades/
+│   └── combat_facade.py
+├── proxies/
+│   └── character_proxy.py
+└── composites/
+    └── squad.py
 
+client/
+└── structural_demo.py
+```
+
+---
+
+## Output / Results
+
+When running the demo, you will see an interactive demonstration of all four structural patterns:
+
+### 1. Decorator Pattern Output
+
+```
 ============================================================
-  Singleton pattern - Game Manager
+  1. DECORATOR PATTERN
 ============================================================
 
-[GameManager] Creating new GameManager instance (Singleton)
-[GameManager] Initialized: Fantasy Quest
-
-==================================================
-  Fantasy Quest
-  Difficulty: Normal
-  Party Size: 0/4
-==================================================
-
-============================================================
-  Factory Pattern - Character Creation
-============================================================
-
+Creating Warrior: Thorin
 [WarriorFactory] Creating a mighty warrior named 'Thorin'
+  Base Strength: 20
+  Base Attack: 15
+
+Adding Strength Potion (+8 STR)
+  New Strength: 28
+  New Attack: 23
+
+Adding Shield Enchantment (20% damage reduction)
+  Damage taken (50 hit): 40
+
+Creating Mage: Gandalf
 [MageFactory] Creating a powerful mage named 'Gandalf'
-[ArcherFactory] Creating a skilled archer named 'Legolas'
-[RogueFactory] Creating a stealthy rogue named 'Assassin'
+  Base Intelligence: 25
+  Base Mana: 150
 
-Warrior 'Thorin' (Level 1)
-  HP: [██████████] 150/150
-  Mana: 50 | EXP: 0/100
-  STR: 20 | INT: 5 | AGI: 8
-Special: Thorin uses SHIELD BASH! Stuns enemy and deals massive damage!
-
-============================================================
-  Monster Creation
-============================================================
-
---- Creating specific monsters ---
-Goblin 'Grax the Nasty' (Level 2)
-Special: Grax the Nasty performs a DIRTY STRIKE!
-
---- Creating random monster wave ---
-• Storm Eagle - Beast (Level 2)
-• Zak - Goblin (Level 2)
-• Iron Bear - Beast (Level 2)
-
-============================================================
-  Abstract Factory Pattern - Equipment Sets
-============================================================
-
---- Fire Equipment Set ---
-Weapon: Flamebrand Sword (Longsword) - Damage: 42
-Armor: Inferno Plate (Heavy Armor) - Defense: 35
-Accessory: Phoenix Amulet - Bonus: +20% Fire Damage
-
-============================================================
-  Builder Pattern - Custom Character Creation
-============================================================
-
-Warrior 'Custom Hero' (Level 15)
-  HP: [████████████████████] 300/150
-  STR: 35 | INT: 8 | AGI: 12
-
-Warrior 'Iron Wall' (Level 10)
-  HP: [████████████████] 250/150
-  STR: 30 | INT: 5 | AGI: 10
-
-============================================================
-  EQUIPPING CHARACTERS
-============================================================
-
-Thorin equipped with Fire set!
-  Flamebrand Sword (Longsword) - Damage: 42
-  Inferno Plate (Heavy Armor) - Defense: 35
-  Phoenix Amulet - Bonus: +20% Fire Damage
-
-============================================================
-  PARTY MANAGEMENT (Singleton)
-============================================================
-
-[GameManager] Added Thorin to the party
-
-=== Current Party (4/4) ===
-1. Thorin - Warrior (Level 1)
-2. Gandalf - Mage (Level 1)
-3. Legolas - Archer (Level 1)
-4. Assassin - Rogue (Level 1)
-
-============================================================
-  COMBAT SYSTEM - Monster Battles & Leveling
-============================================================
-
-Welcome to the Arena!
-Your Party:
-   • Thorin (Level 1) - [██████████] 150/150
-   • Gandalf (Level 1) - [██████████] 80/80
-   • Legolas (Level 1) - [██████████] 100/100
-   • Assassin (Level 1) - [██████████] 90/90
-
-Party of 4 heroes prepares for battle!
-
-============================================================
-Round 1/15
-============================================================
-
-2 monsters appear!
-   • Zak (Level 1)
-   • Iron Bear (Level 1)
-
---- Combat Turn 1 ---
-Thorin attacks Iron Bear with Flamebrand Sword!
-55 damage dealt to Iron Bear!
-...
-Iron Bear has been defeated!
-
- Victory! Rewards earned:
-40 Experience
-30 Gold
-
-... [Combat continues through 15 rounds with increasing difficulty] ...
-
-============================================================
-Adventure is complete! 🏆
-============================================================
-   Rounds Completed: 15
-   Monsters Defeated: 56
-   Total Experience Gained: 8380
-   Total Gold Earned: 2655
-
-Final Party Status:
-   [Alive]: Thorin (Level 7)
-      [████████░░] 231/270
-      EXP: 21/1135
-   [Alive]: Gandalf (Level 7)
-      [██░░░░░░░░] 46/200
-      EXP: 21/1135
-   [Alive]: Legolas (Level 7)
-      [████░░░░░░] 106/220
-      EXP: 21/1135
-   [Alive]: Assassin (Level 7)
-      [█████░░░░░] 107/210
-      EXP: 21/1135
-
-============================================================
-  FINAL SUMMARY
-============================================================
-
-==================================================
-  Fantasy Quest
-  Difficulty: Normal
-  Party Size: 4/4
-==================================================
-
-=== Current Party (4/4) ===
-1. Thorin - Warrior (Level 7)
-2. Gandalf - Mage (Level 7)
-3. Legolas - Archer (Level 7)
-4. Assassin - Rogue (Level 7)
-
-Warrior 'Thorin' (Level 7)
-  HP: [████████░░] 231/270
-  Mana: 110 | EXP: 21/1135
-  STR: 32 | INT: 17 | AGI: 20
-  Weapon: Flamebrand Sword
-  Armor: Inferno Plate
+Adding Spell Buff (+5 INT, +30 Mana)
+  New Intelligence: 30
+  New Mana: 180
 ```
 
-### Conclusions
+### 2. Facade Pattern Output
 
-This laboratory work successfully demonstrates the practical application of creational design patterns in a fantasy RPG game context, enhanced with a comprehensive combat system. The implementation shows how these patterns solve real-world software design challenges:
+```
+============================================================
+  2. FACADE PATTERN
+============================================================
 
-- **Factory Method** eliminates tight coupling between creation and specific classes for both characters and monsters
-- **Abstract Factory** ensures consistency in themed equipment sets
-- **Builder** simplifies complex object construction with multiple optional parameters
-- **Singleton** provides centralized game state management
-- **Combat System** integrates all components into engaging gameplay with progression mechanics
+Executing quick_battle(party, 2)...
 
-The modular architecture with separated class files promotes code reusability, maintainability, and scalability, making it easy to extend the game with new features without modifying existing code.
+Battle Result:
+  Victory: YES
+  Monsters Defeated: 2
+  Experience Earned: 100
+  Gold Earned: 60
+
+Battle Log:
+BATTLE START: 2 Heroes vs 2 Monsters
+
+Thorin attacks Grax for 23 damage!
+Gandalf attacks Shadow Cat for 18 damage!
+Grax attacks Thorin for 8 damage!
+Shadow Cat attacks Gandalf for 12 damage!
+Thorin attacks Grax for 25 damage!
+Grax has been defeated!
+Gandalf attacks Shadow Cat for 21 damage!
+Shadow Cat has been defeated!
+
+VICTORY! Earned 100 EXP and 60 Gold!
+```
+
+### 3. Proxy Pattern Output
+
+```
+============================================================
+  3. PROXY PATTERN
+============================================================
+
+Creating Archer via Proxy
+  [OK] Proxy created (character not loaded yet)
+
+First access: proxy.name
+[CharacterProxy] Loading character 'Legolas'...
+[ArcherFactory] Creating a skilled archer named 'Legolas'
+  [Access #1] Character loaded
+  [Access #2] Accessed name: Legolas
+  [OK] Character loaded! Name: Legolas
+
+Accessing proxy attributes:
+  [Access #3] Accessed strength: 12
+  Strength: 12
+  [Access #4] Accessed agility: 22
+  Agility: 22
+
+Executing: proxy.basic_attack()
+  [Access #5] Executed basic attack
+  Damage: 8
+
+Access Log:
+  Total Accesses: 5
+  * [Access #1] Character loaded
+  * [Access #2] Accessed name: Legolas
+  * [Access #3] Accessed strength: 12
+  * [Access #4] Accessed agility: 22
+  * [Access #5] Executed basic attack
+```
+
+### 4. Composite Pattern Output
+
+```
+============================================================
+  4. COMPOSITE PATTERN
+============================================================
+
+Creating characters:
+[WarriorFactory] Creating a mighty warrior named 'Aragorn'
+  [OK] Aragorn (Warrior)
+[WarriorFactory] Creating a mighty warrior named 'Gimli'
+  [OK] Gimli (Warrior)
+[ArcherFactory] Creating a skilled archer named 'Legolas'
+  [OK] Legolas (Archer)
+[MageFactory] Creating a powerful mage named 'Gandalf'
+  [OK] Gandalf (Mage)
+
+Building squad hierarchy:
+  [OK] Melee Squad (2 warriors)
+  [OK] Ranged Squad (archer + mage)
+  [OK] The Fellowship created
+
+Hierarchical Structure:
+ Squad: The Fellowship
+   Members: 4 | Avg Level: 1.0
+  Squad: Melee Squad
+     Members: 2 | Avg Level: 1.0
+    ├─ Aragorn (Lvl 1) | HP: 150/150
+    ├─ Gimli (Lvl 1) | HP: 150/150
+  Squad: Ranged Squad
+     Members: 2 | Avg Level: 1.0
+    ├─ Legolas (Lvl 1) | HP: 100/100
+    ├─ Gandalf (Lvl 1) | HP: 80/80
+
+Squad Statistics:
+  Total Members: 4
+  Average Level: 1.0
+  Combined Damage: 52
+  Combined Health: 480
+
+Melee Squad Stats:
+  Members: 2
+  Total Damage: 30
+
+Ranged Squad Stats:
+  Members: 2
+  Total Damage: 22
+
+Adding new warrior to Melee Squad:
+[WarriorFactory] Creating a mighty warrior named 'Boromir'
+  [OK] Boromir added
+  Melee Squad Members: 3
+  Fellowship Members: 5
+```
+
+### 5. Combined Patterns Output
+
+```
+============================================================
+  BONUS: All Patterns Combined
+============================================================
+
+Step 1: Create character via Proxy
+[CharacterProxy] Loading character 'Elite-Warrior'...
+[WarriorFactory] Creating a mighty warrior named 'Elite-Warrior'
+  [Access #1] Character loaded
+  [Access #2] Accessed level: 1
+  [OK] Character loaded
+
+Step 2: Stack Decorators
+  [OK] Decorators applied
+
+Step 3: Battle via Facade
+  Battle: Victory!
+  XP Earned: 50
+
+Step 4: Proxy Access Log
+  Total accesses: 2
+```
+
+---
+
+## Conclusions / Results
+
+Several Design Patterns were implemented in this laboratory work. Decorators let characters stack potions and buffs without creating long chains of subclasses, which is much easier. Facades make big systems simple, so combat can run with just one call and the client code stays clean. Proxies give control and can load characters only when needed, also adding automatic logging. These patterns can work together too. Decorators improve characters, Facades handle battles, Proxies delay loading, and Composites make squads. Overall, they help keep code organized, easy to change, and follow clean principles like single responsibility and open/closed, but without making everything too rigid and complicated.

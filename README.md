@@ -126,6 +126,165 @@ The demo runs three sections:
 
 ---
 
+## Code Snippets
+
+1) GameEventManager
+
+```python
+def notify(self, event: str, data: Dict[str, Any] = None) -> None:
+    if data is None:
+        data = {}
+    for obs in list(self._observers):
+        try:
+            obs.update(event, data)
+        except Exception:
+            # Observers should not break the event flow
+            continue
+```
+
+2) AchievementObserver
+
+```python
+class AchievementObserver(Observer):
+    def __init__(self):
+        # shared state used by child observers to prevent duplicates
+        self.achievements: List[str] = []
+        self._unlocked_keys = set()
+        # use a mutable single-element list as a shared counter reference
+        self._total_ref = [0]
+
+        # specialized observers share the containers
+        self._kill_obs = KillMilestoneObserver(self.achievements, self._unlocked_keys, self._total_ref)
+        self._battle_obs = BattleObserver(self.achievements, self._unlocked_keys)
+        self._level_obs = LevelObserver(self.achievements, self._unlocked_keys)
+
+    def update(self, event: str, data: Dict[str, Any]):
+        # Delegate to all specialized observers. Order matters for side-effects
+        self._kill_obs.update(event, data)
+        self._battle_obs.update(event, data)
+        self._level_obs.update(event, data)
+```
+
+3) KillMilestoneObserver
+
+```python
+def update(self, event: str, data: Dict[str, Any]):
+    # Victory contributes to cumulative kills as well
+    if event == 'victory':
+        monsters_defeated = int(data.get('monsters_defeated', 0))
+        prev_total = self._get_total()
+        self._add_total(monsters_defeated)
+
+        if prev_total < 1 <= self._get_total():
+            self._unlock('first_blood', 'First Blood: defeated your first monster')
+
+        if prev_total < 20 <= self._get_total():
+            self._unlock('monster_hunter_20_total', 'Monster Hunter: defeated 20 monsters total')
+
+    elif event == 'monster_killed':
+        count = int(data.get('count', 1))
+        prev_total = self._get_total()
+        self._add_total(count)
+
+        if prev_total < 1 <= self._get_total():
+            self._unlock('first_blood', 'First Blood: defeated your first monster')
+
+        if prev_total < 20 <= self._get_total():
+            self._unlock('monster_hunter_20_total', 'Monster Hunter: defeated 20 monsters total')
+```
+
+4) CommandInvoker
+
+```python
+def execute_command(self, command: Command) -> None:
+    command.execute()
+    self._history.append(command)
+
+def undo_last(self) -> None:
+    if not self._history:
+        return
+    cmd = self._history.pop()
+    try:
+        cmd.undo()
+    except NotImplementedError:
+        # ignore commands that don't support undo
+        pass
+```
+
+5) HealCommand
+
+```python
+class HealCommand(Command):
+    def __init__(self, target, amount: int):
+        self.target = target
+        self.amount = amount
+        self._prev_health: Optional[int] = None
+
+    def execute(self) -> None:
+        self._prev_health = int(self.target.health)
+        self.target.heal(self.amount)
+
+    def undo(self) -> None:
+        if self._prev_health is not None:
+            self.target.health = self._prev_health
+```
+
+6) AttackCommand
+
+```python
+class AttackCommand(Command):
+    def __init__(self, attacker, target):
+        self.attacker = attacker
+        self.target = target
+        self._damage_dealt: Optional[int] = None
+
+    def execute(self) -> None:
+        dmg = self.attacker.basic_attack()
+        self._damage_dealt = dmg
+        self.target.take_damage(dmg)
+
+    def undo(self) -> None:
+        if self._damage_dealt is not None:
+            # best-effort restore health (cannot resurrect reliably)
+            self.target.health = min(self.target.max_health, self.target.health + self._damage_dealt)
+```
+
+7) AggressiveStrategy
+
+```python
+class AggressiveStrategy(CombatStrategy):
+    def choose_action(self, monster, party: List) -> Dict[str, Any]:
+        living = [p for p in party if p.is_alive()]
+        if not living:
+            return {'type': 'wait', 'target': None}
+
+        # 60% chance to use special attack
+        use_special = random.random() < 0.6
+        target = min(living, key=lambda p: p.health)
+        return {'type': 'special' if use_special else 'basic', 'target': target}
+```
+
+8) DefensiveStrategy
+
+```python
+class DefensiveStrategy(CombatStrategy):
+    def choose_action(self, monster, party: List) -> Dict[str, Any]:
+        living = [p for p in party if p.is_alive()]
+        if not living:
+            return {'type': 'wait', 'target': None}
+
+        if hasattr(monster, 'health') and hasattr(monster, 'max_health'):
+            health_ratio = monster.health / max(1, monster.max_health)
+            if health_ratio < 0.3:
+                return {'type': 'defend', 'target': None}
+
+        use_special = random.random() < 0.2
+        target = random.choice(living)
+        return {'type': 'special' if use_special else 'basic', 'target': target}
+```
+
+---
+
 ## Output / Results
 
 When running the demo you will see console output that demonstrates event notifications, achievement unlocks, command history and AI decisions. Example lines:
